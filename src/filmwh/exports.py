@@ -60,7 +60,7 @@ def latest_available_export(dest_dir: Path = EXPORT_DIR) -> tuple[date, Path]:
             path = download_export(snapshot_date, dest_dir)
             return snapshot_date, path
         except ExportNotPublished:
-            print(f"No export for {snapshot_date} yet, trying the previous day")
+            log.info("No export for %s yet, trying the previous day", snapshot_date)
     raise RuntimeError("No export found for today or yesterday")
 
 

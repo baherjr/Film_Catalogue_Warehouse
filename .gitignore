@@ -1,4 +1,8 @@
 /.env
 /data/
-/src/dummy.py
 .venv
+.idea/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.log

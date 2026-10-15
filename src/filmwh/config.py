@@ -4,9 +4,9 @@ Everything that differs between machines (paths, credentials) is defined here,
 so the rest of the code never builds paths or reads environment variables itself.
 """
 
+import os
 from pathlib import Path
 
-import dotenv
 from dotenv import load_dotenv
 
 # --- Paths -------------------------------------------------------------------
@@ -18,24 +18,20 @@ CACHE_DIR = DATA_DIR / "cache" / "movies"
 
 # --- Database ----------------------------------------------------------------
 
+# Copies .env into the environment if the file exists. Variables that are
+# already set (CI, Docker) take precedence, and a missing file is fine.
 load_dotenv(PROJECT_ROOT / ".env")
 DATABASE_URL: str = "postgresql://{user}:{password}@localhost:{port}/{database}".format(
-    user=dotenv.get_key(str(PROJECT_ROOT / ".env"), "POSTGRES_USER"),
-    password=dotenv.get_key(str(PROJECT_ROOT / ".env"), "POSTGRES_PASSWORD"),
-    port=dotenv.get_key(str(PROJECT_ROOT / ".env"), "POSTGRES_PORT"),
-    database=dotenv.get_key(str(PROJECT_ROOT / ".env"), "POSTGRES_DB"),
+    user=os.environ["POSTGRES_USER"],
+    password=os.environ["POSTGRES_PASSWORD"],
+    port=os.environ["POSTGRES_PORT"],
+    database=os.environ["POSTGRES_DB"],
 )
 
 # --- TMDB - API ----------------------------------------------------------------
 
-TMDB_API_TOKEN: str = "{key}".format(
-    key=dotenv.get_key(str(PROJECT_ROOT / ".env"), "TMDB_API_TOKEN")
-)
+TMDB_API_TOKEN: str = os.environ["TMDB_API_TOKEN"]
 API_BASE_URL = "https://api.themoviedb.org/3"
 # --- TMDB exports --------------------------------------------------------------
 EXPORT_BASE_URL: str = "http://files.tmdb.org/p/exports/"
 HTTP_TIMEOUT_SECONDS: float = 50.0
-
-# --- Database (Friday, T2) -----------------------------------------------------
-# Left empty for now. Tomorrow this reads POSTGRES_* from .env
-# and builds the connection string.

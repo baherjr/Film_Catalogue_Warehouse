@@ -20,7 +20,9 @@ COLUMNS = (
     "source_file",
 )
 
-type ExportRow = tuple[date, int, bool, str, float, bool | None, str]
+type ExportRow = tuple[
+    date, int, bool | None, str | None, float | None, bool | None, str
+]
 
 
 def iter_export_rows(path: Path, snapshot_date: date) -> Iterator[ExportRow]:
