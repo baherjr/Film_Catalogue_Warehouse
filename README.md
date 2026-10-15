@@ -65,11 +65,26 @@ uv run pytest
 
 ## Run metrics
 
-Filled in after the first full run.
+Full run on 15 October 2026's export, Windows 11 + Docker Desktop, Python 3.14.
+Command: `uv run filmwh ingest --limit 5000`
 
-| Films | API calls | Wall time | 429 responses |
-|---|---|---|---|
-| 5,000 | – | – | – |
+| Metric | Value |
+|---|---|
+| Export rows loaded | 1,258,757 |
+| Export load time | ~9 s (`COPY`) |
+| Films in slice | 5,000 (0 not found) |
+| API calls | ~4,500 (the rest were already cached) |
+| 429 responses | 0 |
+| Detail fetch time | ~12 min (~6 requests/s, sequential) |
+| Detail insert time | ~3 min 15 s |
+| **Total wall time** | **15 min 35 s** |
+
+A second run with everything cached makes no API calls and inserts no rows.
+
+## Known issues
+
+- **Detail fetching is sequential.** Requests run one at a time at about 6 per second, well under TMDB's limit of roughly 40 per second, and the full run hit no 429s. Fetching with a small pool of concurrent requests should cut the 12-minute fetch substantially. Planned for the week 5 performance lab.
+- **Detail inserts send every payload, one row at a time.** Each row is sent in full and checked against `ON CONFLICT`, even when it's unchanged, so an all-cached rerun still spends about 3 minutes in the insert step. The fix is to read the existing `(movie_id, payload_sha256)` pairs first and batch only new rows. Planned for week 3 query tuning.
 
 ## Roadmap
 

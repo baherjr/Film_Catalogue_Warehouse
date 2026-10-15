@@ -18,10 +18,9 @@ def top_n_movie_ids(limit: int) -> list[int]:
     """Return the IDs of the `limit` most popular non-adult films."""
     if limit < 1:
         raise ValueError("Limit must be at least 1")
-    with psycopg.connect(DATABASE_URL) as conn:
-        with conn.cursor() as cur:
-            cur.execute(TOP_MOVIES_SQL, (limit,))
-            return [row[0] for row in cur.fetchall()]
+    with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
+        cur.execute(TOP_MOVIES_SQL, (limit,))
+        return [row[0] for row in cur.fetchall()]
 
 
 if __name__ == "__main__":

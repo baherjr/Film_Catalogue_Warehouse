@@ -1,11 +1,14 @@
 """Download TMDB's daily movie ID export files."""
 
-from datetime import date, datetime, timedelta, timezone
+import logging
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import httpx
 
 from filmwh.config import EXPORT_BASE_URL, EXPORT_DIR, HTTP_TIMEOUT_SECONDS
+
+log = logging.getLogger(__name__)
 
 
 class ExportNotPublished(Exception):
@@ -27,7 +30,7 @@ def download_export(snapshot_date: date, dest_dir: Path = EXPORT_DIR) -> Path:
     """
     final_path = dest_dir / export_filename(snapshot_date)
     if final_path.exists():
-        print(f"{final_path.name} already on disk")
+        log.info("%s already on disk", final_path.name)
         return final_path
 
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -37,12 +40,13 @@ def download_export(snapshot_date: date, dest_dir: Path = EXPORT_DIR) -> Path:
     url = export_url(snapshot_date)
     with httpx.stream("GET", url, timeout=HTTP_TIMEOUT_SECONDS) as response:
         if response.status_code in (403, 404):
-            raise ExportNotPublished(f"{url} is not published yet ({response.status_code})")
+            raise ExportNotPublished(
+                f"{url} is not published yet ({response.status_code})"
+            )
         if response.status_code != 200:
             raise RuntimeError(f"Failed to download {url}: {response.status_code}")
         with open(part_path, "wb") as f:
-            for chunk in response.iter_bytes():
-                f.write(chunk)
+            f.writelines(response.iter_bytes())
 
     part_path.replace(final_path)
     return final_path
@@ -50,7 +54,7 @@ def download_export(snapshot_date: date, dest_dir: Path = EXPORT_DIR) -> Path:
 
 def latest_available_export(dest_dir: Path = EXPORT_DIR) -> tuple[date, Path]:
     """Return today's export (UTC), or yesterday's if today's isn't published yet."""
-    today_utc = datetime.now(timezone.utc).date()
+    today_utc = datetime.now(UTC).date()
     for snapshot_date in (today_utc, today_utc - timedelta(days=1)):
         try:
             path = download_export(snapshot_date, dest_dir)
@@ -61,6 +65,9 @@ def latest_available_export(dest_dir: Path = EXPORT_DIR) -> tuple[date, Path]:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
+    )
     snapshot_date, path = latest_available_export()
     size_mb = path.stat().st_size / 1_000_000
     print(f"{snapshot_date}: {path} ({size_mb:.2f} MB)")

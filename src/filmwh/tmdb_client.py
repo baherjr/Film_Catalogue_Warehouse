@@ -4,15 +4,15 @@ import json
 import logging
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from datetime import datetime, timezone
+from typing import Any
 
 import httpx
 
 from filmwh.config import API_BASE_URL, CACHE_DIR, HTTP_TIMEOUT_SECONDS, TMDB_API_TOKEN
 
-log = logging.getLogger("httpx").setLevel(logging.WARNING)
-
+log = logging.getLogger(__name__)
 
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 MAX_ATTEMPTS = 5
@@ -43,7 +43,7 @@ class TmdbClient:
         else:
             self.http = http
 
-    def _get(self, url: str, params: dict) -> httpx.Response:
+    def _get(self, url: str, params: dict[str, str]) -> httpx.Response:
         """GET with retries. Returns the final response; raises if attempts run out."""
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
@@ -54,7 +54,11 @@ class TmdbClient:
                 delay = 2 ** (attempt - 1)
                 log.warning(
                     "GET %s failed (%s), retrying in %ss (attempt %d of %d)",
-                    url, exc, delay, attempt, MAX_ATTEMPTS,
+                    url,
+                    exc,
+                    delay,
+                    attempt,
+                    MAX_ATTEMPTS,
                 )
                 self.sleep(delay)
                 continue
@@ -70,12 +74,18 @@ class TmdbClient:
             if delay > MAX_DELAY_SECONDS:
                 log.warning(
                     "GET %s asked for Retry-After %ss, capping at %ss",
-                    url, delay, MAX_DELAY_SECONDS,
+                    url,
+                    delay,
+                    MAX_DELAY_SECONDS,
                 )
                 delay = MAX_DELAY_SECONDS
             log.warning(
                 "GET %s returned %d, retrying in %ss (attempt %d of %d)",
-                url, response.status_code, delay, attempt, MAX_ATTEMPTS,
+                url,
+                response.status_code,
+                delay,
+                attempt,
+                MAX_ATTEMPTS,
             )
             self.sleep(delay)
         raise AssertionError("unreachable")
@@ -83,7 +93,7 @@ class TmdbClient:
     def _cache_path(self, movie_id: int) -> Path:
         return self.cache_dir / f"{movie_id}.json"
 
-    def get_movie(self, movie_id: int, refresh: bool = False) -> dict:
+    def get_movie(self, movie_id: int, refresh: bool = False) -> dict[str, Any]:
         """Return the details+credits payload for one film.
 
         Reads from the cache unless refresh=True.
@@ -93,7 +103,9 @@ class TmdbClient:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
 
-        response = self._get(f"/movie/{movie_id}", params={"append_to_response": "credits"})
+        response = self._get(
+            f"/movie/{movie_id}", params={"append_to_response": "credits"}
+        )
         if response.status_code == 404:
             raise MovieNotFound(f"Movie {movie_id} not found")
         response.raise_for_status()
@@ -112,16 +124,16 @@ class TmdbClient:
         path = self._cache_path(movie_id)
         if not path.exists():
             raise FileNotFoundError(f"Cache file for movie {movie_id} does not exist")
-        return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
 
     def close(self) -> None:
         self.http.close()
 
 
-
-
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
+    )
     client = TmdbClient()
     try:
         movie = client.get_movie(550)

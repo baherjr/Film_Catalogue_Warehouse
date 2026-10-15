@@ -3,6 +3,8 @@
 import hashlib
 import json
 import logging
+from datetime import datetime
+from typing import Any
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -19,17 +21,23 @@ INSERT_SQL = """
     ON CONFLICT (movie_id, payload_sha256) DO NOTHING
 """
 
+type DetailRow = tuple[int, str, Jsonb, datetime]
 
-def payload_sha256(payload: dict) -> str:
+
+def payload_sha256(payload: dict[str, Any]) -> str:
     # Frozen format: changing any option here changes every stored hash, and the
     # next run would insert a fake "new version" of every film.
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    canonical = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def collect_rows(client: TmdbClient, movie_ids: list[int]) -> tuple[list[tuple], int]:
+def collect_rows(
+    client: TmdbClient, movie_ids: list[int]
+) -> tuple[list[DetailRow], int]:
     """Fetch every film; return (rows to insert, number of films not found)."""
-    rows: list[tuple] = []
+    rows: list[DetailRow] = []
     not_found = 0
     for i, movie_id in enumerate(movie_ids, start=1):
         try:
@@ -39,7 +47,14 @@ def collect_rows(client: TmdbClient, movie_ids: list[int]) -> tuple[list[tuple],
             log.warning("Movie %d not found", movie_id)
             continue
 
-        rows.append((movie_id, payload_sha256(payload), Jsonb(payload), client.fetched_at(movie_id)))
+        rows.append(
+            (
+                movie_id,
+                payload_sha256(payload),
+                Jsonb(payload),
+                client.fetched_at(movie_id),
+            )
+        )
 
         if i % 100 == 0:
             log.info("fetched %d of %d", i, len(movie_ids))
@@ -47,14 +62,17 @@ def collect_rows(client: TmdbClient, movie_ids: list[int]) -> tuple[list[tuple],
     return rows, not_found
 
 
-def insert_rows(rows: list[tuple]) -> int:
+def insert_rows(rows: list[DetailRow]) -> int:
     """Insert in one transaction; return how many rows were actually new."""
     inserted = 0
-    with psycopg.connect(DATABASE_URL) as conn:
-        with conn.transaction(), conn.cursor() as cur:
-            for row in rows:
-                cur.execute(INSERT_SQL, row)
-                inserted += cur.rowcount
+    with (
+        psycopg.connect(DATABASE_URL) as conn,
+        conn.transaction(),
+        conn.cursor() as cur,
+    ):
+        for row in rows:
+            cur.execute(INSERT_SQL, row)
+            inserted += cur.rowcount
     return inserted
 
 
@@ -66,10 +84,17 @@ def ingest_details(limit: int) -> None:
         inserted = insert_rows(rows)
     finally:
         client.close()
-    log.info("films: %d | not found: %d | new rows: %d | unchanged: %d",
-             len(movie_ids), not_found, inserted, len(rows) - inserted)
+    log.info(
+        "films: %d | not found: %d | new rows: %d | unchanged: %d",
+        len(movie_ids),
+        not_found,
+        inserted,
+        len(rows) - inserted,
+    )
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
+    )
     ingest_details(500)
