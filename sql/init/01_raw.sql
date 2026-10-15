@@ -3,10 +3,11 @@ CREATE SCHEMA IF NOT EXISTS raw;
 CREATE TABLE IF NOT EXISTS raw.movie_ids_daily (
     snapshot_date   DATE             NOT NULL,
     movie_id        BIGINT           NOT NULL,
-    adult           BOOLEAN          NOT NULL,
-    original_title  TEXT             NOT NULL,
-    popularity      DOUBLE PRECISION NOT NULL,
-    video           BOOLEAN          NOT NULL,
+    -- Nullable: the raw layer keeps TMDB's values as sent, and TMDB sends some nulls.
+    adult           BOOLEAN,
+    original_title  TEXT,
+    popularity      DOUBLE PRECISION,
+    video           BOOLEAN,
     source_file     TEXT             NOT NULL,
     loaded_at       TIMESTAMPTZ      NOT NULL DEFAULT now(),
     CONSTRAINT pk_movie_ids_daily PRIMARY KEY (snapshot_date, movie_id)
