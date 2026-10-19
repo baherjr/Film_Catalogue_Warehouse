@@ -1,0 +1,45 @@
+sources:
+  - name: tmdb
+    schema: raw
+    description: >
+      Raw TMDB data, loaded by the filmwh CLI. `filmwh exports --from DATE --to DATE`
+      downloads TMDB's daily movie ID exports and loads them into movie_ids_daily and
+      export_loads. `filmwh ingest --limit N` loads the latest export the same way, then
+      fetches details+credits for the top N films by popularity into movie_details.
+    tables:
+      - name: movie_details
+        description: "Grain: one row per distinct version of a film's TMDB details+credits payload. Append-only."
+        columns:
+          - name: movie_id
+            description: "TMDB film id. Part of the primary key (movie_id, payload_sha256)."
+          - name: payload_sha256
+            description: >
+              SHA-256 hex digest of the payload, serialised with sorted keys and no
+              whitespace. Part of the primary key (movie_id, payload_sha256): a changed
+              payload adds a new row, an unchanged one is skipped.
+          - name: fetched_at
+            description: "When the payload was fetched from the TMDB API (write time of the cached response file, UTC)."
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "(payload ->> 'id')::bigint = movie_id"
+
+      - name: movie_ids_daily
+        description: "Grain: one row per movie per day it appears in TMDB's daily movie ID export. Reloaded per snapshot_date."
+        columns:
+          - name: snapshot_date
+            description: "Date of the export file. Part of the primary key (snapshot_date, movie_id)."
+          - name: movie_id
+            description: "TMDB film id. Part of the primary key (snapshot_date, movie_id)."
+
+      - name: export_loads
+        description: "Grain: one row per snapshot_date loaded into raw.movie_ids_daily. Overwritten on reload."
+        columns:
+          - name: snapshot_date
+            description: "Date of the export file. Primary key."
+          - name: row_count
+            description: "Number of rows loaded into movie_ids_daily for this snapshot_date."
+        data_tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: "row_count > 0"
