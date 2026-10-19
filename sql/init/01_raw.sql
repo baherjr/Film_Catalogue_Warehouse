@@ -8,13 +8,22 @@ CREATE TABLE IF NOT EXISTS raw.movie_ids_daily (
     original_title  TEXT,
     popularity      DOUBLE PRECISION,
     video           BOOLEAN,
-    source_file     TEXT             NOT NULL,
-    loaded_at       TIMESTAMPTZ      NOT NULL DEFAULT now(),
     CONSTRAINT pk_movie_ids_daily PRIMARY KEY (snapshot_date, movie_id)
 );
 
 COMMENT ON TABLE raw.movie_ids_daily IS
     'Grain: one row per movie per day it appears in TMDB''s daily movie ID export. Reloaded per snapshot_date.';
+
+CREATE TABLE IF NOT EXISTS raw.export_loads (
+    snapshot_date   DATE        NOT NULL,
+    source_file     TEXT        NOT NULL,
+    row_count       BIGINT      NOT NULL,
+    loaded_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT pk_export_loads PRIMARY KEY (snapshot_date)
+);
+
+COMMENT ON TABLE raw.export_loads IS
+    'Grain: one row per snapshot_date loaded into raw.movie_ids_daily. Overwritten on reload.';
 
 CREATE TABLE IF NOT EXISTS raw.movie_details (
     movie_id        BIGINT      NOT NULL,

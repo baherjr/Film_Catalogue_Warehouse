@@ -47,6 +47,7 @@ def db_conn() -> Iterator[psycopg.Connection]:
     conn.execute(
         "DELETE FROM raw.movie_ids_daily WHERE snapshot_date = %s", (TEST_DATE,)
     )
+    conn.execute("DELETE FROM raw.export_loads WHERE snapshot_date = %s", (TEST_DATE,))
     conn.commit()
     conn.close()
 
@@ -77,3 +78,10 @@ def test_export_load_is_idempotent(
 
     assert first == second == len(ROWS)
     assert count_rows(db_conn) == len(ROWS)
+
+    with db_conn.cursor() as cursor:
+        cursor.execute(
+            "SELECT source_file, row_count FROM raw.export_loads WHERE snapshot_date = %s",
+            (TEST_DATE,),
+        )
+        assert cursor.fetchall() == [(export_file.name, len(ROWS))]

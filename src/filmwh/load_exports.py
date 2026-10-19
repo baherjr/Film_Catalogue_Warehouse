@@ -17,12 +17,9 @@ COLUMNS = (
     "original_title",
     "popularity",
     "video",
-    "source_file",
 )
 
-type ExportRow = tuple[
-    date, int, bool | None, str | None, float | None, bool | None, str
-]
+type ExportRow = tuple[date, int, bool | None, str | None, float | None, bool | None]
 
 
 def iter_export_rows(path: Path, snapshot_date: date) -> Iterator[ExportRow]:
@@ -37,7 +34,6 @@ def iter_export_rows(path: Path, snapshot_date: date) -> Iterator[ExportRow]:
                 data["original_title"],
                 data["popularity"],
                 data["video"],
-                path.name,
             )
 
 
@@ -60,6 +56,17 @@ def load_export(path: Path, snapshot_date: date) -> int:
             (snapshot_date,),
         )
         row_count = cur.fetchone()[0]
+        cur.execute(
+            """
+            INSERT INTO raw.export_loads (snapshot_date, source_file, row_count)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (snapshot_date) DO UPDATE
+            SET source_file = EXCLUDED.source_file,
+                row_count = EXCLUDED.row_count,
+                loaded_at = now()
+            """,
+            (snapshot_date, path.name, row_count),
+        )
     return row_count
 
 
