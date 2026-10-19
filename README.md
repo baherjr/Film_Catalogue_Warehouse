@@ -33,6 +33,8 @@ TMDB API: details + credits ──► raw.movie_details (JSONB) ┘
 - **Raw data is stored as JSONB, unchanged.** Flattening happens in dbt staging, so a change in the API's response shape never breaks ingestion, and every model can be rebuilt from raw.
 - **Export grain is one row per `(snapshot_date, movie_id)`.** Each day's file is a full snapshot, and this table becomes the periodic snapshot fact.
 - **Details are append-only, keyed on `(movie_id, payload_sha256)`.** Re-running ingestion with unchanged data inserts nothing; a changed payload adds a new row. That history feeds the SCD Type 2 snapshot in week 3.
+- **Staging keeps every details version.** `stg_tmdb__movie_details` exposes all payload versions of a film, with `is_latest` marking the most recent, so the SCD Type 2 model can read the full history.
+- **Credits come from the latest version only.** Cast and crew are unnested from each film's latest payload, so every credit appears once per film and counts of films per actor or director aren't inflated. Those counts cover the 5,000-film slice, not a person's whole career.
 - **Loads are idempotent.** The export loader deletes and reloads a `snapshot_date` inside one transaction, so running it twice gives the same result.
 - **API calls are kept low.** Each film costs one request (`append_to_response=credits`); responses are cached on disk; 429 responses are retried with back-off that respects `Retry-After`. Popularity comes from the daily export file, which costs no API calls.
 - **Scope is limited.** Development runs on 500 films; the full run covers the 5,000 most popular.

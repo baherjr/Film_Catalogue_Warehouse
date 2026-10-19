@@ -1,0 +1,24 @@
+models:
+  - name: stg_tmdb__movie_ids_daily
+    description: "TMDB's daily movie ID exports, one view row per raw row. Grain: one row per movie per day it appears in TMDB's daily movie ID export."
+    columns:
+      - name: snapshot_date
+        description: "Date of the export file."
+      - name: movie_id
+        description: "TMDB film id."
+      - name: is_adult
+        description: "Whether TMDB flags the film as adult content. Nullable: TMDB sends nulls for some films."
+      - name: original_title
+        description: "The film's title in its original language."
+      - name: popularity
+        description: >
+          TMDB's popularity score for the film on snapshot_date. It has no units and is
+          recalculated daily, so it's only meaningful for comparing films against each other.
+      - name: is_video
+        description: "Whether TMDB flags the entry as a video release rather than a theatrical film. Nullable: TMDB sends nulls for some films."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [snapshot_date, movie_id]
+          config:
+            where: "snapshot_date >= current_date - 7"
