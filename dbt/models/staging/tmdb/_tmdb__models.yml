@@ -13,7 +13,8 @@ models:
       - name: popularity
         description: >
           TMDB's popularity score for the film on snapshot_date. It has no units and is
-          recalculated daily, so it's only meaningful for comparing films against each other.
+          recalculated daily, so it's meaningful for comparing films against each other
+          and as a trend for one film over time.
       - name: is_video
         description: "Whether TMDB flags the entry as a video release rather than a theatrical film. Nullable: TMDB sends nulls for some films."
     data_tests:
@@ -28,10 +29,16 @@ models:
     columns:
       - name: movie_id
         description: "TMDB film id."
+        data_tests:
+          - not_null
       - name: payload_sha256
         description: "SHA-256 hex digest of the raw payload. Identifies the version of the film's details."
+        data_tests:
+          - not_null
       - name: fetched_at
         description: "When the payload was fetched from the TMDB API (UTC)."
+        data_tests:
+          - not_null
       - name: title
         description: "The film's title as TMDB displays it."
       - name: original_title
@@ -40,6 +47,10 @@ models:
         description: "ISO 639-1 code of the film's original language."
       - name: status
         description: "TMDB release status, e.g. Released, Post Production, Rumored."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Rumored", "Planned", "In Production", "Post Production", "Released", "Canceled"]
       - name: imdb_id
         description: "The film's IMDb id. Nullable: not every film has one."
       - name: release_date
@@ -55,7 +66,9 @@ models:
       - name: vote_count
         description: "Number of TMDB user votes. 0 when the film has no votes."
       - name: is_latest
-        description: "Whether this row is the film's most recently fetched version. Exactly one row per movie_id is true."
+        description: >
+          Whether this row is the film's most recently fetched version. Exactly one row
+          per movie_id is true (checked by assert_one_latest_version_per_movie).
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
