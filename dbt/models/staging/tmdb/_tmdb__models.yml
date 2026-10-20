@@ -22,3 +22,41 @@ models:
             combination_of_columns: [snapshot_date, movie_id]
           config:
             where: "snapshot_date >= current_date - 7"
+
+  - name: stg_tmdb__movie_details
+    description: "TMDB film details, one view row per raw row. Grain: one row per distinct version of a film's TMDB details payload."
+    columns:
+      - name: movie_id
+        description: "TMDB film id."
+      - name: payload_sha256
+        description: "SHA-256 hex digest of the raw payload. Identifies the version of the film's details."
+      - name: fetched_at
+        description: "When the payload was fetched from the TMDB API (UTC)."
+      - name: title
+        description: "The film's title as TMDB displays it."
+      - name: original_title
+        description: "The film's title in its original language."
+      - name: original_language
+        description: "ISO 639-1 code of the film's original language."
+      - name: status
+        description: "TMDB release status, e.g. Released, Post Production, Rumored."
+      - name: imdb_id
+        description: "The film's IMDb id. Nullable: not every film has one."
+      - name: release_date
+        description: "The film's primary release date. NULL when TMDB has no date."
+      - name: budget
+        description: "Production budget in US dollars. NULL when TMDB has no budget (it sends 0)."
+      - name: revenue
+        description: "Box office revenue in US dollars. NULL when TMDB has no revenue (it sends 0)."
+      - name: runtime
+        description: "Running time in minutes. NULL when TMDB has no runtime (it sends 0)."
+      - name: vote_average
+        description: "TMDB's average user rating, 0 to 10. NULL when the film has no votes."
+      - name: vote_count
+        description: "Number of TMDB user votes. 0 when the film has no votes."
+      - name: is_latest
+        description: "Whether this row is the film's most recently fetched version. Exactly one row per movie_id is true."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [movie_id, payload_sha256]
