@@ -22,7 +22,7 @@ models:
           arguments:
             combination_of_columns: [snapshot_date, movie_id]
           config:
-            where: "snapshot_date >= current_date - 7"
+            where: "snapshot_date >= current_date - 1"
 
   - name: stg_tmdb__movie_details
     description: "TMDB film details, one view row per raw row. Grain: one row per distinct version of a film's TMDB details payload."
@@ -73,3 +73,61 @@ models:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [movie_id, payload_sha256]
+
+  - name: stg_tmdb__movie_cast
+    description: "Cast credits unnested from each film's latest details payload. Grain: one row per cast credit, from each film's latest payload."
+    columns:
+      - name: credit_id
+        description: "TMDB credit id. Identifies one person's credit on one film."
+        data_tests:
+          - not_null
+          - unique
+      - name: movie_id
+        description: "TMDB film id."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_tmdb__movie_details')
+                field: movie_id
+      - name: person_id
+        description: "TMDB person id."
+        data_tests:
+          - not_null
+      - name: person_name
+        description: "The person's name as TMDB displays it."
+      - name: character_name
+        description: "The character played. Empty for some credits."
+      - name: billing_order
+        description: "Position in the film's billing, 0 = top-billed."
+        data_tests:
+          - not_null
+      - name: known_for_department
+        description: "The department TMDB associates the person with, e.g. Acting."
+
+  - name: stg_tmdb__movie_crew
+    description: "Crew credits unnested from each film's latest details payload. Grain: one row per crew credit, from each film's latest payload. The same person can appear several times for one film, once per job."
+    columns:
+      - name: credit_id
+        description: "TMDB credit id. Identifies one person's credit on one film."
+        data_tests:
+          - not_null
+          - unique
+      - name: movie_id
+        description: "TMDB film id."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_tmdb__movie_details')
+                field: movie_id
+      - name: person_id
+        description: "TMDB person id."
+        data_tests:
+          - not_null
+      - name: person_name
+        description: "The person's name as TMDB displays it."
+      - name: department
+        description: "Department of this credit, e.g. Directing, Writing, Production."
+      - name: job
+        description: "The person's job title for this credit, e.g. Director, Screenplay, Producer."
