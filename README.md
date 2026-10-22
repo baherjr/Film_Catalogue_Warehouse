@@ -1,7 +1,7 @@
 # Film Catalogue Warehouse
 
 A local data warehouse built from TMDB movie data: Python ingestion → PostgreSQL → dbt.
-Daily popularity snapshots for ~1M films, plus details and credits for the 5,000 most popular.
+Daily popularity snapshots for ~1.26M films, daily since 1 August 2026, plus details and credits for the 5,000 most popular.
 Stack: Python 3.14, httpx, psycopg, PostgreSQL, dbt, pytest, Docker, GitHub Actions.
 Tested with pytest (ingestion) and dbt tests (models, from week 2).
 
@@ -82,6 +82,17 @@ Command: `uv run filmwh ingest --limit 5000`
 | **Total wall time** | **15 min 35 s** |
 
 A second run with everything cached makes no API calls and inserts no rows.
+
+## dbt build (week 2)
+
+Clean build (`dbt clean && dbt deps && dbt build`) on 22 October 2026: 4 staging models, 20 data tests, all passing in about 5 s. Reloading the day's export and rebuilding changes no counts.
+
+| Model | Grain | Rows |
+|---|---|---|
+| `stg_tmdb__movie_ids_daily` | film × snapshot date | 103,220,867 |
+| `stg_tmdb__movie_details` | film × payload version | 5,007 |
+| `stg_tmdb__movie_cast` | cast credit, latest version | 211,875 |
+| `stg_tmdb__movie_crew` | crew credit, latest version | 505,547 |
 
 ## Known issues
 
