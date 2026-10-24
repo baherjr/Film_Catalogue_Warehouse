@@ -81,6 +81,7 @@ def ingest_details(limit: int) -> None:
     try:
         movie_ids = top_n_movie_ids(limit)
         rows, not_found = collect_rows(client, movie_ids)
+        log.info("inserting %d rows", len(rows))
         inserted = insert_rows(rows)
     finally:
         client.close()

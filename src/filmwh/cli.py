@@ -60,7 +60,7 @@ def main() -> None:
 
     ingest_parser = sub.add_parser("ingest", help="download, load and fetch details")
     ingest_parser.add_argument(
-        "--limit", type=int, default=500, help="Number of movies to process"
+        "--limit", type=int, default=5000, help="Number of films to fetch details for"
     )
 
     exports_parser = sub.add_parser(
