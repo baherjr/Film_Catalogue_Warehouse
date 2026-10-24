@@ -1,7 +1,7 @@
 # Film Catalogue Warehouse
 
 A local data warehouse built from TMDB movie data: Python ingestion → PostgreSQL → dbt.
-Daily popularity snapshots for ~1.26M films, daily since 1 August 2026, plus details and credits for every film that has been in the top 5,000 by popularity on a day ingestion ran: 6,829 films as of 24 October 2026, and growing as new films enter the top 5,000.
+Daily popularity snapshots for ~1.26M films since 1 August 2026, plus details and credits for the most popular films (6,829 as of 24 October 2026).
 Stack: Python 3.14, httpx, psycopg, PostgreSQL, dbt, pytest, Docker, GitHub Actions.
 Tested with pytest (ingestion) and dbt tests (models, from week 2).
 
@@ -37,7 +37,7 @@ TMDB API: details + credits ──► raw.movie_details (JSONB) ┘
 - **Credits come from the latest version only.** Cast and crew are unnested from each film's latest payload, so every credit appears once per film and counts of films per actor or director aren't inflated. Those counts cover only the films in the details slice, not a person's whole career.
 - **Loads are idempotent.** The export loader deletes and reloads a `snapshot_date` inside one transaction, so running it twice gives the same result.
 - **API calls are kept low.** Each film costs one request (`append_to_response=credits`); responses are cached on disk; 429 responses are retried with back-off that respects `Retry-After`. Popularity comes from the daily export file, which costs no API calls.
-- **Scope is limited.** Each run fetches details for the 5,000 most popular films in that day's export (`--limit`, default 5,000). Films that drop out of the top 5,000 keep their stored details, so the slice only grows.
+- **Scope is limited.** Each run fetches details for the 5,000 most popular films in that day's export (`--limit`, default 5,000). Films that drop out of the top 5,000 keep their stored details, so the slice only grows: it holds every film that has been in the top 5,000 on a day ingestion ran.
 - **One Python version: 3.14.** dbt does not yet support 3.15, so the whole project, including Docker and CI, is pinned to 3.14.
 
 ## Run it
@@ -100,14 +100,16 @@ These counts grow with every daily run.
 
 - **Film details are frozen at first fetch.** The disk cache never expires and nothing refetches a film, so a film keeps the details it had on the day it entered the slice. A film first fetched on 15 October 2026 shows that day's vote count, status, budget and revenue indefinitely. Anyone querying the movie dimension (`dim_movie`) needs to read these attributes as of each film's `fetched_at`, not as current values. Change-feed refetching will fix this, and SCD Type 2 depends on it.
 - **Detail fetching is sequential.** Requests run one at a time at about 6 per second, well under TMDB's limit of roughly 40 per second, and the full run hit no 429s. Fetching with a small pool of concurrent requests should cut the 12-minute fetch substantially. Planned for the week 5 performance lab.
-- **Detail inserts send every payload, one row at a time.** Each row is sent in full and checked against `ON CONFLICT`, even when it's unchanged, so an all-cached rerun still spends about 3 minutes in the insert step. The fix is to read the existing `(movie_id, payload_sha256)` pairs first and batch only new rows. Planned for week 3 query tuning.
+- **Detail inserts send every payload, one row at a time.** Each row is sent in full and checked against `ON CONFLICT`, even when it's unchanged, so an all-cached rerun still spends about 3 minutes in the insert step. The fix is to read the existing `(movie_id, payload_sha256)` pairs first and batch only new rows. Planned for the week 5 performance lab.
 
 ## Roadmap
 
 - [x] Week 1: raw ingestion, cached and idempotent, with tests
 - [x] Week 2: dbt staging for exports, details, cast and crew; 20 tests, including a deliberate failure check
-- [ ] Week 3: star schema with the grain of every table documented; incremental loads from TMDB's change feed; model contracts; query tuning with `EXPLAIN ANALYZE`
-- [ ] Week 4: SCD Type 2 via dbt snapshot; Docker Compose (Postgres + ingestion + dbt); GitHub Actions running ruff, pytest and `dbt build`
+- [ ] Week 3: staging for companies and genres; star schema (popularity snapshot fact; movie, company, person and date dimensions) with the grain of every table documented
+- [ ] Week 4: genre, company and cast bridge tables; SCD Type 2 on status, runtime, budget and revenue via dbt snapshot
+- [ ] Week 5: incremental loads driven by TMDB's change feed; `EXPLAIN ANALYZE` and indexes for the heaviest queries; concurrent fetching and batched inserts
+- [ ] Week 6: dbt model contracts and source freshness; Docker Compose (Postgres + ingestion + dbt); GitHub Actions running ruff, pytest and `dbt build` on fixture data
 
 ## Data source and attribution
 
