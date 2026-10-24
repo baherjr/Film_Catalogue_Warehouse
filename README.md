@@ -1,7 +1,7 @@
 # Film Catalogue Warehouse
 
 A local data warehouse built from TMDB movie data: Python ingestion → PostgreSQL → dbt.
-Daily popularity snapshots for ~1.26M films, daily since 1 August 2026, plus details and credits for the 5,000 most popular.
+Daily popularity snapshots for ~1.26M films, daily since 1 August 2026, plus details and credits for every film that has been in the top 5,000 by popularity on a day ingestion ran: 6,829 films as of 24 October 2026, and growing as new films enter the top 5,000.
 Stack: Python 3.14, httpx, psycopg, PostgreSQL, dbt, pytest, Docker, GitHub Actions.
 Tested with pytest (ingestion) and dbt tests (models, from week 2).
 
@@ -34,10 +34,10 @@ TMDB API: details + credits ──► raw.movie_details (JSONB) ┘
 - **Export grain is one row per `(snapshot_date, movie_id)`.** Each day's file is a full snapshot, and this table becomes the periodic snapshot fact.
 - **Details are append-only, keyed on `(movie_id, payload_sha256)`.** Re-running ingestion with unchanged data inserts nothing; a changed payload adds a new row. That history feeds the SCD Type 2 snapshot in week 3.
 - **Staging keeps every details version.** `stg_tmdb__movie_details` exposes all payload versions of a film, with `is_latest` marking the most recent, so the SCD Type 2 model can read the full history.
-- **Credits come from the latest version only.** Cast and crew are unnested from each film's latest payload, so every credit appears once per film and counts of films per actor or director aren't inflated. Those counts cover the 5,000-film slice, not a person's whole career.
+- **Credits come from the latest version only.** Cast and crew are unnested from each film's latest payload, so every credit appears once per film and counts of films per actor or director aren't inflated. Those counts cover only the films in the details slice, not a person's whole career.
 - **Loads are idempotent.** The export loader deletes and reloads a `snapshot_date` inside one transaction, so running it twice gives the same result.
 - **API calls are kept low.** Each film costs one request (`append_to_response=credits`); responses are cached on disk; 429 responses are retried with back-off that respects `Retry-After`. Popularity comes from the daily export file, which costs no API calls.
-- **Scope is limited.** Development runs on 500 films; the full run covers the 5,000 most popular.
+- **Scope is limited.** Each run fetches details for the 5,000 most popular films in that day's export (`--limit`, default 5,000). Films that drop out of the top 5,000 keep their stored details, so the slice only grows.
 - **One Python version: 3.14.** dbt does not yet support 3.15, so the whole project, including Docker and CI, is pinned to 3.14.
 
 ## Run it
@@ -67,7 +67,7 @@ uv run pytest
 
 ## Run metrics
 
-Full run on 15 October 2026's export, Windows 11 + Docker Desktop, Python 3.14.
+First full run, on 15 October 2026's export, Windows 11 + Docker Desktop, Python 3.14.
 Command: `uv run filmwh ingest --limit 5000`
 
 | Metric | Value |
@@ -85,14 +85,16 @@ A second run with everything cached makes no API calls and inserts no rows.
 
 ## dbt build (week 2)
 
-Clean build (`dbt clean && dbt deps && dbt build`) on 22 October 2026: 4 staging models, 20 data tests, all passing in about 5 s. Reloading the day's export and rebuilding changes no counts.
+`dbt build` on 24 October 2026: 4 staging models, 20 data tests, all passing in about 4 s. The data covers 85 daily exports (1 August to 24 October 2026) and 6,829 films with details. Reloading a day's export and rebuilding changes no counts (checked on 22 October 2026).
 
 | Model | Grain | Rows |
 |---|---|---|
-| `stg_tmdb__movie_ids_daily` | film × snapshot date | 103,220,867 |
-| `stg_tmdb__movie_details` | film × payload version | 5,007 |
-| `stg_tmdb__movie_cast` | cast credit, latest version | 211,875 |
-| `stg_tmdb__movie_crew` | crew credit, latest version | 505,547 |
+| `stg_tmdb__movie_ids_daily` | film × snapshot date | 105,748,079 |
+| `stg_tmdb__movie_details` | film × payload version | 6,829 |
+| `stg_tmdb__movie_cast` | cast credit, latest version | 273,616 |
+| `stg_tmdb__movie_crew` | crew credit, latest version | 630,715 |
+
+These counts grow with every daily run.
 
 ## Known issues
 
