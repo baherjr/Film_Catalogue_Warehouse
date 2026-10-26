@@ -131,3 +131,57 @@ models:
         description: "Department of this credit, e.g. Directing, Writing, Production."
       - name: job
         description: "The person's job title for this credit, e.g. Director, Screenplay, Producer."
+
+  - name: stg_tmdb__movie_companies
+    description: "Production companies unnested from each film's latest details payload. Grain: one row per film and production company, from each film's latest payload. TMDB occasionally lists a company twice on one film; staging keeps one row."
+    columns:
+      - name: movie_id
+        description: "TMDB film id."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_tmdb__movie_details')
+                field: movie_id
+      - name: company_id
+        description: "TMDB production company id."
+        data_tests:
+          - not_null
+      - name: company_name
+        description: "The production company's name as TMDB displays it."
+        data_tests:
+          - not_null
+      - name: origin_country
+        description: "ISO 3166-1 alpha-2 code of the production company's country of origin, e.g. US. NULL when TMDB has no country (it sends an empty string)."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [movie_id, company_id]
+
+  - name: stg_tmdb__movie_genres
+    description: "Genres unnested from each film's latest details payload. Grain: one row per film and genre, from each film's latest payload."
+    columns:
+      - name: movie_id
+        description: "TMDB film id."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_tmdb__movie_details')
+                field: movie_id
+      - name: genre_id
+        description: "TMDB genre id, from TMDB's fixed movie genre list (19 genres)."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [12, 14, 16, 18, 27, 28, 35, 36, 37, 53, 80, 99, 878, 9648, 10402, 10749, 10751, 10752, 10770]
+                quote: false
+      - name: genre_name
+        description: "The genre's name as TMDB displays it."
+        data_tests:
+          - not_null
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [movie_id, genre_id]
