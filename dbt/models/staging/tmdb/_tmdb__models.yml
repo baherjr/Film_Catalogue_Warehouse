@@ -131,6 +131,8 @@ models:
         description: "Department of this credit, e.g. Directing, Writing, Production."
       - name: job
         description: "The person's job title for this credit, e.g. Director, Screenplay, Producer."
+      - name: known_for_department
+        description: "The department TMDB associates the person with, e.g. Directing. Describes the person, not this credit, so it can differ from department."
 
   - name: stg_tmdb__movie_companies
     description: "Production companies unnested from each film's latest details payload. Grain: one row per film and production company, from each film's latest payload. TMDB occasionally lists a company twice on one film; staging keeps one row."

@@ -135,7 +135,7 @@ All five are tables in the `marts` schema. They're small, and the fact build and
 - **Columns:** `person_id`, `person_name`, `known_for_department`.
 - **Source:** the union of people from `stg_tmdb__movie_cast` and `stg_tmdb__movie_crew`, one row per `person_id`.
 - **The risk:** a person's name or `known_for_department` can differ between credits, because each credit was fetched with a different film, possibly on a different date. On 4 Nov, 155 of 386,006 people have more than one name and 20 have more than one `known_for_department`. A plain `distinct` would give those people two rows. The model keeps the values from the most recently fetched film (`row_number() over (partition by person_id order by fetched_at desc)`, with `fetched_at` joined from the latest details row, since the cast and crew models don't carry it), so the attributes are always the latest TMDB value. Type 1.
-- **`known_for_department` needs adding to `stg_tmdb__movie_crew`.** TMDB sends it on crew credits too, but only the cast model extracts it. 218,343 people (57%) appear only in crew, so without it they'd have a NULL department.
+- **`known_for_department` comes from both cast and crew credits.** 218,343 people (57%) appear only in crew, so taking it from cast alone would leave them with a NULL department.
 - **Tests:** `unique` and `not_null` on `person_id`. A singular test, `assert_person_attributes_consistent`, returns people whose name or `known_for_department` differs across credits, with `severity: warn`. The 155 conflicts come from TMDB, not from the warehouse, so they shouldn't fail the build, but a sudden jump in the count should be seen.
 
 ### `dim_genre`
