@@ -70,3 +70,174 @@ models:
           - not_null
       - name: origin_country
         description: "ISO 3166-1 alpha-2 code of the company's country of origin, e.g. US. NULL when TMDB has no country (it sends an empty string)."
+
+  - name: dim_person
+    description: "One row per person credited in the cast or crew of at least one catalogue film. Type 1: when credits disagree on a person's name or department, the values from the most recently fetched film win."
+    columns:
+      - name: person_id
+        description: "TMDB person id."
+        data_tests:
+          - not_null
+          - unique
+      - name: person_name
+        description: "The person's name as TMDB displays it."
+      - name: known_for_department
+        description: "The department TMDB says the person is best known for, e.g. Acting, Directing. Taken from cast and crew credits alike."
+
+  - name: dim_movie
+    description: "One row per film version (Type 2 on status, runtime, budget, revenue). Single-version form until week 6: every film has one version, backdated to 2026-08-01 00:00 UTC."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [movie_id, valid_from]
+    columns:
+      - name: movie_version_key
+        description: "Surrogate key: hash of movie_id and valid_from. Stable across rebuilds."
+        data_tests:
+          - not_null
+          - unique
+      - name: movie_id
+        description: "TMDB movie id. The durable key, the same on every version of a film."
+        data_tests:
+          - not_null
+      - name: status
+        description: "Release status, e.g. Released, In Production. Type 2."
+      - name: runtime
+        description: "Runtime in minutes. NULL when TMDB reports 0. Type 2."
+      - name: budget
+        description: "Budget in USD. NULL when TMDB reports 0. Type 2."
+      - name: revenue
+        description: "Revenue in USD. NULL when TMDB reports 0. Type 2."
+      - name: title
+        description: "Title as TMDB displays it. Type 1."
+      - name: original_title
+        description: "Title in the original language. Type 1."
+      - name: original_language
+        description: "ISO 639-1 code of the original language. Type 1."
+      - name: imdb_id
+        description: "IMDb id, e.g. tt0137523. Type 1."
+      - name: release_date
+        description: "Primary release date. A second role of dim_date. NULL when TMDB has no date. Type 1."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: is_adult
+        description: "Adult flag from the film's latest row in the daily export. False unless TMDB reclassified the film after its fetch, since the slice only picks non-adult films. Type 1."
+        data_tests:
+          - not_null
+      - name: is_video
+        description: "Video flag from the film's latest row in the daily export. Type 1."
+        data_tests:
+          - not_null
+      - name: vote_count
+        description: "Number of TMDB votes. Type 1."
+      - name: vote_average
+        description: "Average TMDB vote. NULL when there are no votes. Type 1."
+      - name: details_fetched_at
+        description: "When the latest details payload was fetched."
+      - name: valid_from
+        description: "Start of the version's validity. The first version of every film starts at 2026-08-01 00:00 UTC."
+      - name: valid_to
+        description: "End of the version's validity. NULL on the current version."
+      - name: is_current
+        description: "True on the version valid now."
+
+  - name: bridge_movie_genre
+    description: "One row per film per genre. Links dim_movie to dim_genre. Names live in dim_genre, not here."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [movie_id, genre_id]
+    columns:
+      - name: movie_id
+        description: "TMDB movie id."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_movie')
+                field: movie_id
+      - name: genre_id
+        description: "TMDB genre id."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_genre')
+                field: genre_id
+
+  - name: bridge_movie_company
+    description: "One row per film per production company. Links dim_movie to dim_company. Names live in dim_company, not here."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [movie_id, company_id]
+    columns:
+      - name: movie_id
+        description: "TMDB movie id."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_movie')
+                field: movie_id
+      - name: company_id
+        description: "TMDB company id."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_company')
+                field: company_id
+
+  - name: bridge_movie_cast
+    description: "One row per cast credit. Links dim_movie to dim_person, with the role on the credit. Names live in dim_person, not here."
+    columns:
+      - name: credit_id
+        description: "TMDB credit id, unique per credit."
+        data_tests:
+          - not_null
+          - unique
+      - name: movie_id
+        description: "TMDB movie id."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_movie')
+                field: movie_id
+      - name: person_id
+        description: "TMDB person id."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_person')
+                field: person_id
+      - name: character_name
+        description: "The character played, as TMDB lists it."
+      - name: billing_order
+        description: "Position in the cast list, 0 = top billed."
+
+  - name: bridge_movie_crew
+    description: "One row per crew credit. Links dim_movie to dim_person, with the job on the credit. One person can hold several jobs on one film. Names live in dim_person, not here."
+    columns:
+      - name: credit_id
+        description: "TMDB credit id, unique per credit."
+        data_tests:
+          - not_null
+          - unique
+      - name: movie_id
+        description: "TMDB movie id."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_movie')
+                field: movie_id
+      - name: person_id
+        description: "TMDB person id."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_person')
+                field: person_id
+      - name: department
+        description: "Crew department, e.g. Directing, Writing."
+      - name: job
+        description: "Job within the department, e.g. Director, Screenplay."

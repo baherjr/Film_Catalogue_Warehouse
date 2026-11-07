@@ -2,7 +2,9 @@
 
 ## 1. Catalogue scope
 
-**Decision:** The fact holds only films that have details: 6,829 films before the 4 Nov ingest, out of ~1.28M distinct films in the export.
+**Decision:** The fact holds only films that have details: 7,710 films on 7 Nov (6,829 before the 4 Nov ingest), out of ~1.28M distinct films in the export.
+
+**How films get details:** each details run fetches the top 5,000 non-adult films by popularity in the latest export snapshot (`slice.py`, `--limit` default 5000), and the catalogue is every film any run has fetched. So `is_adult` is false in `dim_movie` unless TMDB reclassifies a film after its fetch.
 
 **Why:** This is a film catalogue warehouse. A fact row whose film has no title, release date, genres, companies or credits can't be analysed alongside anything else, so it adds rows without adding questions it can answer.
 
@@ -64,7 +66,7 @@ Day-over-day change in popularity or rank stays at query time (`LAG` over `snaps
 - **Movie (durable)** → `movie_id`, also kept on the fact so current-version questions and the bridges don't need the version key (section 3)
 - **Date** → `dim_date.date_day`, from `snapshot_date`
 
-Genre, company and person aren't direct keys: a film has several of each, so they're reached from `dim_movie` through the genre, company and cast/crew bridges (designed in section 4, built in week 5). Key choices are in section 3.
+Genre, company and person aren't direct keys: a film has several of each, so they're reached from `dim_movie` through the genre, company and cast/crew bridges (section 4). Key choices are in section 3.
 
 ### Source and materialisation
 
@@ -95,11 +97,11 @@ For context, the full export is 119,681,805 rows across 96 dates and 1,282,121 d
 - Kimball's default is surrogates everywhere, to insulate the warehouse from source key changes and to merge sources. Neither applies yet. If a second film source is ever added, this decision is revisited.
 - **`dim_movie`'s surrogate is a hash, not a sequence.** `generate_surrogate_key` gives the same key for the same (`movie_id`, `valid_from`) on every build. The fact is a table that stores the key, so a sequence would renumber versions on each full refresh of `dim_movie` and silently break every stored fact row. The cost is a 32-character text key instead of an integer. On a ~725k-row fact that's about 25 MB, which doesn't matter at this size.
 
-| Dimension | Grain | Key | Surrogate? | Source | Rows (4 Nov) |
+| Dimension | Grain | Key | Surrogate? | Source | Rows (7 Nov) |
 |---|---|---|---|---|---|
-| `dim_movie` | one row per film version | `movie_version_key` (durable: `movie_id`) | **Yes** | `stg_tmdb__movie_details`, `stg_tmdb__movie_ids_daily` | 7,703 (one version each) |
-| `dim_company` | one row per production company | `company_id` | No | `stg_tmdb__movie_companies` | 8,545 |
-| `dim_person` | one row per person | `person_id` | No | `stg_tmdb__movie_cast` + `stg_tmdb__movie_crew` | 386,006 |
+| `dim_movie` | one row per film version | `movie_version_key` (durable: `movie_id`) | **Yes** | `stg_tmdb__movie_details`, `stg_tmdb__movie_ids_daily` | 7,710 (one version each) |
+| `dim_company` | one row per production company | `company_id` | No | `stg_tmdb__movie_companies` | 8,554 |
+| `dim_person` | one row per person | `person_id` | No | `stg_tmdb__movie_cast` + `stg_tmdb__movie_crew` | 386,226 |
 | `dim_genre` | one row per TMDB movie genre | `genre_id` | No | seed `tmdb_genres.csv` | 19 |
 | `dim_date` | one row per calendar day | `date_day` | No | `dbt_utils.date_spine` | 58,804 |
 
@@ -124,9 +126,9 @@ All five are tables in the `marts` schema. They're small, and the fact build and
 - **Grain:** one row per production company credited on at least one catalogue film.
 - **Key:** `company_id`.
 - **Columns:** `company_id`, `company_name`, `origin_country`.
-- **Source:** distinct companies from `stg_tmdb__movie_companies`. `assert_one_name_per_company` already guarantees one name per id, so `distinct` can't produce two rows for one company.
+- **Source:** `stg_tmdb__movie_companies`, one row per `company_id`, keeping the name and `origin_country` from the most recently fetched film (`row_number() over (partition by company_id order by fetched_at desc, movie_id desc)`, with `fetched_at` joined from the latest details row). A plain `distinct` isn't safe: TMDB can send two spellings for one id (1 company on 7 Nov, the Jadran case), and `distinct` would give it two rows. `movie_id` breaks ties between films fetched at the same moment, so the pick is the same on every build.
 - **Type 1:** a renamed company shows its current name on every film. Company history isn't a question this warehouse asks.
-- **Tests:** `unique` and `not_null` on `company_id`.
+- **Tests:** `unique` and `not_null` on `company_id`. `assert_one_name_per_company` returns companies with more than one name in staging, with `severity: warn`: the conflicts come from TMDB and the model resolves them, but a jump in the count should be seen.
 
 ### `dim_person`
 
@@ -134,9 +136,9 @@ All five are tables in the `marts` schema. They're small, and the fact build and
 - **Key:** `person_id`.
 - **Columns:** `person_id`, `person_name`, `known_for_department`.
 - **Source:** the union of people from `stg_tmdb__movie_cast` and `stg_tmdb__movie_crew`, one row per `person_id`.
-- **The risk:** a person's name or `known_for_department` can differ between credits, because each credit was fetched with a different film, possibly on a different date. On 4 Nov, 155 of 386,006 people have more than one name and 20 have more than one `known_for_department`. A plain `distinct` would give those people two rows. The model keeps the values from the most recently fetched film (`row_number() over (partition by person_id order by fetched_at desc)`, with `fetched_at` joined from the latest details row, since the cast and crew models don't carry it), so the attributes are always the latest TMDB value. Type 1.
-- **`known_for_department` comes from both cast and crew credits.** 218,343 people (57%) appear only in crew, so taking it from cast alone would leave them with a NULL department.
-- **Tests:** `unique` and `not_null` on `person_id`. A singular test, `assert_person_attributes_consistent`, returns people whose name or `known_for_department` differs across credits, with `severity: warn`. The 155 conflicts come from TMDB, not from the warehouse, so they shouldn't fail the build, but a sudden jump in the count should be seen.
+- **The risk:** a person's name or `known_for_department` can differ between credits, because each credit was fetched with a different film, possibly on a different date. On 7 Nov, 156 of 386,226 people have more than one name and 20 have more than one `known_for_department` (no one has both). A plain `distinct` would give those people two rows. The model keeps the values from the most recently fetched film (`row_number() over (partition by person_id order by fetched_at desc, movie_id desc)` over the `union all` of cast and crew credits, with `fetched_at` joined from the latest details row, since the cast and crew models don't carry it), so the attributes are always the latest TMDB value. Type 1.
+- **`known_for_department` comes from both cast and crew credits.** 218,458 people (57%) appear only in crew, so taking it from cast alone would leave them with a NULL department.
+- **Tests:** `unique` and `not_null` on `person_id`. A singular test, `assert_person_attributes_consistent`, returns people whose name or `known_for_department` differs across credits, with `severity: warn`. It returns 176 people on 7 Nov (156 name conflicts + 20 department conflicts). These conflicts come from TMDB, not from the warehouse, so they shouldn't fail the build, but a sudden jump in the count should be seen.
 
 ### `dim_genre`
 
@@ -155,7 +157,7 @@ All five are tables in the `marts` schema. They're small, and the fact build and
 - **Source:** `dbt_utils.date_spine`.
 - **Tests:** `unique` and `not_null` on `date_day`; a singular test that the row count equals the number of days in the range (no gaps).
 
-## 4. Bridges and history (designed now, built in week 5)
+## 4. Bridges and history
 
 ### Bridges
 
@@ -199,7 +201,7 @@ Why this instead of a dbt snapshot:
 - **Backdating the first version is one `case` expression** in the model, not a fix applied to snapshot output afterwards.
 - **Only the four tracked columns open a version.** That's the job `strategy: check` with `check_cols` would do, done explicitly in step 2.
 
-Materialised as a table, full refresh. At 7,703 films it rebuilds in seconds.
+Materialised as a table, full refresh. At 7,710 films the version logic is cheap; the build takes about 3 minutes, almost all of it picking each film's latest export flags from the ~120M-row export view.
 
 #### How the fact joins a versioned dimension: point-in-time
 
