@@ -1,0 +1,72 @@
+models:
+  - name: dim_genre
+    description: "A genre of a film, e.g. Action, Comedy, Drama."
+    columns:
+      - name: genre_id
+        description: "TMDB genre id."
+        data_tests:
+          - not_null
+          - unique
+      - name: genre_name
+        description: "The genre's name as TMDB displays it."
+        data_tests:
+          - not_null
+  - name: dim_date
+    description: "One row per calendar day, 1 Jan 1870 to 31 Dec 2030. Serves snapshot_date on the fact and release_date on dim_movie."
+    columns:
+      - name: date_day
+        description: "The calendar date (a date, not a timestamp)."
+        data_tests:
+          - not_null
+          - unique
+      - name: year
+        description: "Calendar year."
+        data_tests:
+          - not_null
+      - name: quarter
+        description: "Calendar quarter (1-4)."
+        data_tests:
+          - not_null
+      - name: month
+        description: "Calendar month (1-12)."
+        data_tests:
+          - not_null
+      - name: month_name
+        description: "Month name, e.g. January."
+        data_tests:
+          - not_null
+      - name: iso_year
+        description: "ISO 8601 week-numbering year. Can differ from year in the first and last days of a year."
+        data_tests:
+          - not_null
+      - name: iso_week
+        description: "ISO 8601 week number (1-53), paired with iso_year."
+        data_tests:
+          - not_null
+      - name: day_of_week
+        description: "ISO day of week (1 = Monday, 7 = Sunday)."
+        data_tests:
+          - not_null
+      - name: day_name
+        description: "Day name, e.g. Monday."
+        data_tests:
+          - not_null
+      - name: is_weekend
+        description: "True on Saturday and Sunday."
+        data_tests:
+          - not_null
+
+  - name: dim_company
+    description: "One row per production company credited on at least one catalogue film. Type 1: when TMDB has two spellings for one company id, the name from the most recently fetched film wins."
+    columns:
+      - name: company_id
+        description: "TMDB company id."
+        data_tests:
+          - not_null
+          - unique
+      - name: company_name
+        description: "The company's name as TMDB displays it."
+        data_tests:
+          - not_null
+      - name: origin_country
+        description: "ISO 3166-1 alpha-2 code of the company's country of origin, e.g. US. NULL when TMDB has no country (it sends an empty string)."
