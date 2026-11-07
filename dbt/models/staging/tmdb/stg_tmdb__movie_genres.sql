@@ -1,3 +1,6 @@
+-- distinct: TMDB can list the same genre twice in one film's payload (1 film on
+-- 7 Nov). Without it the film gets two identical rows, which breaks the
+-- (movie_id, genre_id) uniqueness test and double-counts the film in that genre.
 select distinct
     d.movie_id,
     (c.genre ->> 'id')::integer as genre_id,

@@ -21,7 +21,7 @@
 - Cost: past snapshot dates gain rows whenever new films are fetched. This is Kimball's late-arriving dimension. The fact is a full-refresh table until week 6; the week 6 incremental model must insert new dates **and** the full history of films new to `dim_movie` since the last run.
 - History only goes back to 1 Aug, where the export backfill starts. TMDB keeps export files for about 3 months, so older dates can't be added.
 
-**Known gap (fix Thursday):** No details were fetched between 24 Oct and 4 Nov while exports kept loading. The 4 Nov ingest caught films in that day's top 5,000, but films that were in the top 5,000 only on some day from 25 Oct to 3 Nov are still missing. Fix: slice selection over the union of the top 5,000 across a date range.
+**Known gap (open, fix planned):** No details were fetched between 24 Oct and 4 Nov while exports kept loading. The 4 Nov ingest caught films in that day's top 5,000, but films that were in the top 5,000 only on some day from 25 Oct to 3 Nov are still missing. Fix: slice selection over the union of the top 5,000 across a date range.
 
 ## 2. `fct_movie_popularity_daily`
 

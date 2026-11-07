@@ -3,7 +3,8 @@
 -- People whose name or known_for_department differs across their cast and crew credits.
 -- These conflicts come from TMDB (each credit is fetched with a different film), so this
 -- warns rather than fails. dim_person keeps the value from the most recently fetched film.
--- About 155 rows on 4 Nov 2026; a sudden jump is the thing to look for.
+-- 176 rows on 7 Nov 2026 (156 name conflicts + 20 department conflicts, no overlap);
+-- a sudden jump is the thing to look for.
 
 with credits as (
 

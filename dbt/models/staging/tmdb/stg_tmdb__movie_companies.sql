@@ -1,3 +1,6 @@
+-- distinct: TMDB can list the same company twice in one film's payload (1 film on
+-- 7 Nov). Without it the film gets two identical rows, which breaks the
+-- (movie_id, company_id) uniqueness test and double-counts the film for that company.
 select distinct
     d.movie_id,
     (c.company ->> 'id')::bigint as company_id,

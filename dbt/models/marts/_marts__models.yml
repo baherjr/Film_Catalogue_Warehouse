@@ -154,6 +154,7 @@ models:
       - name: movie_id
         description: "TMDB movie id."
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_movie')
@@ -161,6 +162,7 @@ models:
       - name: genre_id
         description: "TMDB genre id."
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_genre')
@@ -176,6 +178,7 @@ models:
       - name: movie_id
         description: "TMDB movie id."
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_movie')
@@ -183,6 +186,7 @@ models:
       - name: company_id
         description: "TMDB company id."
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_company')
@@ -199,6 +203,7 @@ models:
       - name: movie_id
         description: "TMDB movie id."
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_movie')
@@ -206,6 +211,7 @@ models:
       - name: person_id
         description: "TMDB person id."
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_person')
@@ -226,6 +232,7 @@ models:
       - name: movie_id
         description: "TMDB movie id."
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_movie')
@@ -233,6 +240,7 @@ models:
       - name: person_id
         description: "TMDB person id."
         data_tests:
+          - not_null
           - relationships:
               arguments:
                 to: ref('dim_person')
