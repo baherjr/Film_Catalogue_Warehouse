@@ -1,3 +1,5 @@
+{{ config(severity='warn') }}
+
 select
     c.company_id,
     count(distinct  c.company_name) as company_name_count

@@ -1,4 +1,4 @@
-select
+select distinct
     d.movie_id,
     (c.genre ->> 'id')::integer as genre_id,
     c.genre ->> 'name' as genre_name
