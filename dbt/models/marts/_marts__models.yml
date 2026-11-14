@@ -85,7 +85,7 @@ models:
         description: "The department TMDB says the person is best known for, e.g. Acting, Directing. Taken from cast and crew credits alike."
 
   - name: dim_movie
-    description: "One row per film version (Type 2 on status, runtime, budget, revenue). Single-version form until week 6: every film has one version, backdated to 2026-08-01 00:00 UTC."
+    description: "One row per film version (Type 2 on status, runtime, budget, revenue). A new version starts whenever one of those differs from the film's previous payload. The first version is backdated to 2026-08-01 00:00 UTC."
     data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
@@ -249,3 +249,43 @@ models:
         description: "Crew department, e.g. Directing, Writing."
       - name: job
         description: "Job within the department, e.g. Director, Screenplay."
+
+  - name: fct_movie_popularity_daily
+    description: "Periodic snapshot. One row per catalogue film per day it appears in TMDB's daily movie ID export, joined to the dim_movie version valid on that day."
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [movie_id, snapshot_date]
+    columns:
+      - name: movie_version_key
+        description: "The dim_movie version valid on snapshot_date (point-in-time)."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_movie')
+                field: movie_version_key
+      - name: movie_id
+        description: "TMDB movie id. The durable key, kept so current-version questions and the bridges don't need the version key."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_movie')
+                field: movie_id
+      - name: snapshot_date
+        description: "Date of the daily export."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: popularity
+        description: "TMDB popularity score that day. Non-additive: summarise with AVG, median, MAX or rank."
+        data_tests:
+          - not_null
+      - name: popularity_rank
+        description: "Rank by popularity among every film in that day's export, computed before the catalogue filter. Ties share a rank. Non-additive."
+        data_tests:
+          - not_null
