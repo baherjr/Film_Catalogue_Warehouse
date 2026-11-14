@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from pathlib import Path
 
 import httpx
@@ -50,3 +51,32 @@ def test_retries_after_429_then_succeeds(tmp_path: Path) -> None:
     assert len(calls) == 2
     assert sleeps == [2]
     assert (tmp_path / "550.json").exists()
+
+
+def test_changed_movie_ids_reads_every_page() -> None:
+    pages: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        page = request.url.params["page"]
+        pages.append(page)
+        assert request.url.params["start_date"] == "2026-11-01"
+        assert request.url.params["end_date"] == "2026-11-14"
+        results = {"1": [{"id": 1}, {"id": 2}], "2": [{"id": 2}, {"id": 3}]}[page]
+        return httpx.Response(200, json={"results": results, "total_pages": 2})
+
+    with httpx.Client(
+        transport=httpx.MockTransport(handler),
+        base_url="https://api.themoviedb.org/3",
+    ) as http:
+        client = TmdbClient(token="unused", http=http)
+        ids = client.changed_movie_ids(date(2026, 11, 1), date(2026, 11, 14))
+
+    assert ids == {1, 2, 3}
+    assert pages == ["1", "2"]
+
+
+def test_changed_movie_ids_rejects_more_than_14_days() -> None:
+    with httpx.Client(transport=httpx.MockTransport(failing_handler)) as http:
+        client = TmdbClient(token="unused", http=http)
+        with pytest.raises(ValueError):
+            client.changed_movie_ids(date(2026, 11, 1), date(2026, 11, 16))

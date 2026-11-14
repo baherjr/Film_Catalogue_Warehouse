@@ -4,7 +4,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,12 @@ log = logging.getLogger(__name__)
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 MAX_ATTEMPTS = 5
 MAX_DELAY_SECONDS = 60  # ceiling on Retry-After, so a bad header can't stall the run
+MAX_CHANGES_WINDOW = timedelta(days=14)  # /movie/changes accepts at most 14 days
+MAX_CHANGES_PAGES = 500  # TMDB refuses page 501+, so a bigger window is cut short
+
+
+class ChangesWindowTooLarge(Exception):
+    """A /movie/changes window has more ids than TMDB will page through."""
 
 
 class MovieNotFound(Exception):
@@ -118,6 +124,45 @@ class TmdbClient:
         part_path.replace(path)
 
         return response.json()
+
+    def changed_movie_ids(self, start: date, end: date) -> set[int]:
+        """IDs of films TMDB reports as changed from start to end (max 14 days).
+
+        Raises ChangesWindowTooLarge on the first page if the window holds more
+        than MAX_CHANGES_PAGES pages, instead of failing at page 501 or returning
+        a silently truncated set.
+        """
+        if start > end:
+            raise ValueError(f"start {start} is after end {end}")
+        if end - start > MAX_CHANGES_WINDOW:
+            raise ValueError(
+                f"{start} to {end} is more than {MAX_CHANGES_WINDOW.days} days"
+            )
+
+        ids: set[int] = set()
+        page = 1
+        while True:
+            response = self._get(
+                "/movie/changes",
+                params={
+                    "start_date": start.isoformat(),
+                    "end_date": end.isoformat(),
+                    "page": str(page),
+                },
+            )
+            response.raise_for_status()
+            body = response.json()
+            total_pages = body["total_pages"]
+            if total_pages > MAX_CHANGES_PAGES:
+                raise ChangesWindowTooLarge(
+                    f"{start} to {end} has {total_pages} pages of changes; "
+                    f"TMDB serves at most {MAX_CHANGES_PAGES}. Use a smaller window."
+                )
+            ids.update(result["id"] for result in body["results"])
+            # total_pages is 0 when nothing changed, so compare with >=.
+            if page >= total_pages:
+                return ids
+            page += 1
 
     def fetched_at(self, movie_id: int) -> datetime:
         """When this film's cached payload was fetched (cache file write time, UTC)."""

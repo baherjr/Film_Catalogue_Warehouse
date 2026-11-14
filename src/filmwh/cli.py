@@ -1,4 +1,8 @@
-"""Command line entry point: `filmwh ingest --limit N` and `filmwh exports --from DATE --to DATE`."""
+"""Command line entry point.
+
+`filmwh ingest --limit N`, `filmwh exports --from DATE --to DATE`,
+`filmwh refresh [--limit N]` and `filmwh changes --from DATE --to DATE`.
+"""
 
 import argparse
 import logging
@@ -7,7 +11,7 @@ from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 
 from filmwh.exports import ExportNotPublished, download_export, latest_available_export
-from filmwh.load_details import ingest_details
+from filmwh.load_details import changes_details, ingest_details, refresh_details
 from filmwh.load_exports import load_export
 
 log = logging.getLogger("filmwh")
@@ -30,12 +34,16 @@ def date_range(start: date, end: date) -> Iterator[date]:
         day += timedelta(days=1)
 
 
-def backfill_exports(start: date, end: date) -> None:
+def check_date_range(start: date, end: date) -> None:
     if start > end:
         raise ValueError(f"start {start} is after end {end}")
     today = datetime.now(UTC).date()
     if end > today:
         raise ValueError(f"end {end} is after today {today}")
+
+
+def backfill_exports(start: date, end: date) -> None:
+    check_date_range(start, end)
 
     missing: list[date] = []
     for snapshot_date in date_range(start, end):
@@ -52,6 +60,20 @@ def backfill_exports(start: date, end: date) -> None:
 
     if missing:
         log.warning("Missing exports: %s", ", ".join(d.isoformat() for d in missing))
+
+
+def refresh(limit: int | None) -> None:
+    start = time.perf_counter()
+    refresh_details(limit)
+    end = time.perf_counter()
+    log.info("Total time: %.2f seconds", end - start)
+
+
+def changes(start: date, end: date) -> None:
+    check_date_range(start, end)
+    t0 = time.perf_counter()
+    changes_details(start, end)
+    log.info("Total time: %.2f seconds", time.perf_counter() - t0)
 
 
 def main() -> None:
@@ -73,6 +95,26 @@ def main() -> None:
         "--to", dest="end", type=date.fromisoformat, required=True
     )
 
+    refresh_parser = sub.add_parser(
+        "refresh", help="refetch details for catalogue films and record changes"
+    )
+    refresh_parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Number of catalogue films to refresh (omit to refresh every catalogue film)",
+    )
+
+    changes_parser = sub.add_parser(
+        "changes", help="refetch catalogue films TMDB reports as changed"
+    )
+    changes_parser.add_argument(
+        "--from", dest="start", type=date.fromisoformat, required=True
+    )
+    changes_parser.add_argument(
+        "--to", dest="end", type=date.fromisoformat, required=True
+    )
+
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -84,3 +126,7 @@ def main() -> None:
         ingest(args.limit)
     elif args.command == "exports":
         backfill_exports(args.start, args.end)
+    elif args.command == "refresh":
+        refresh(args.limit)
+    elif args.command == "changes":
+        changes(args.start, args.end)
