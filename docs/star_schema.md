@@ -2,7 +2,7 @@
 
 ## 1. Catalogue scope
 
-**Decision:** The fact holds only films that have details: 7,710 films on 7 Nov (6,829 before the 4 Nov ingest), out of ~1.28M distinct films in the export.
+**Decision:** The fact holds only films that have details: 8,264 films on 14 Nov (6,829 before the 4 Nov ingest), out of ~1.28M distinct films in the export.
 
 **How films get details:** each details run fetches the top 5,000 non-adult films by popularity in the latest export snapshot (`slice.py`, `--limit` default 5000), and the catalogue is every film any run has fetched. So `is_adult` is false in `dim_movie` unless TMDB reclassifies a film after its fetch.
 
@@ -13,12 +13,12 @@
 **Row count (4 Nov, before that day's ingest):** 643,285 rows = 6,829 films across 96 snapshot days (1 Aug – 4 Nov 2026, no gaps).
 
 - A full rectangle would be 6,829 × 96 = 655,584. The 12,299 missing film-days (1.9%) are days a film was absent from the export, mostly films added to TMDB after 1 Aug. This is real absence, not a load gap.
-- After the 4 Nov ingest (874 new films): **725,373 rows** = 7,703 films across the same 96 days. The full rectangle would be 7,703 × 96 = 739,488, so 14,115 film-days (1.9%) are absent, the same rate as before.
+- On 14 Nov: **860,269 rows** = 8,264 films × 106 days (1 Aug – 14 Nov). The full rectangle would be 8,264 × 106 = 875,984, so 15,715 film-days (1.8%) are absent, about the same rate as before.
 
 **Late-arriving films:** Membership means *has details today*. When a film is fetched for the first time, its full popularity history back to 1 Aug joins the fact.
 
 - Why: a film enters the top 5,000 because its popularity rose, and that rise happened before it was fetched. Freezing history at the fetch date would cut it off.
-- Cost: past snapshot dates gain rows whenever new films are fetched. This is Kimball's late-arriving dimension. The fact is a full-refresh table until week 6; the week 6 incremental model must insert new dates **and** the full history of films new to `dim_movie` since the last run.
+- Cost: past snapshot dates gain rows whenever new films are fetched. This is Kimball's late-arriving dimension. The fact is a full-refresh table until week 7; the week 7 incremental model must insert new dates **and** the full history of films new to `dim_movie` since the last run.
 - History only goes back to 1 Aug, where the export backfill starts. TMDB keeps export files for about 3 months, so older dates can't be added.
 
 **Known gap (open, fix planned):** No details were fetched between 24 Oct and 4 Nov while exports kept loading. The 4 Nov ingest caught films in that day's top 5,000, but films that were in the top 5,000 only on some day from 25 Oct to 3 Nov are still missing. Fix: slice selection over the union of the top 5,000 across a date range.
@@ -47,7 +47,7 @@ One row per film with details per day that the film appears in TMDB's daily movi
 
 Summarise it with `AVG`, median, `MAX`, or rank instead, and compare films within the same day or one film's trend over time.
 
-The other export columns aren't measures. `adult`, `video` and `original_title` describe the film, so they go in the movie dimension. `vote_count` and `vote_average` from the details payload don't belong here either: each film's details are frozen at first fetch, so repeating them on every daily row would present one old value as a daily series.
+The other export columns aren't measures. `adult`, `video` and `original_title` describe the film, so they go in the movie dimension. `vote_count` and `vote_average` from the details payload don't belong here either. They're Type 1 columns on `dim_movie`, refreshed only when a film is refetched, so repeating them on every daily row would present the latest value as a daily series. A real daily vote series would need its own periodic snapshot, because the export this fact is built from carries only popularity.
 
 ### Derived measures
 
@@ -71,21 +71,21 @@ Genre, company and person aren't direct keys: a film has several of each, so the
 ### Source and materialisation
 
 - **Source:** `stg_tmdb__movie_ids_daily` for the rows, popularity and rank; `stg_tmdb__movie_details` (`where is_latest`) for the scope filter.
-- **Materialisation:** table. The fact itself is small (~725k rows), but the rank window runs over the full ~120M-row export, which is far too expensive to recompute on every query through a view. Full refresh until week 6, then incremental by `snapshot_date` plus the late-arriving backfill from section 1.
+- **Materialisation:** table. The fact itself is small (~860k rows), but the rank window runs over the full ~130M-row export, which is far too expensive to recompute on every query through a view. The build takes 240–476 s, almost all of it ranking the export. Full refresh until week 7, then incremental by `snapshot_date` plus the late-arriving backfill from section 1.
 
 ### Tests
 
 - `dbt_utils.unique_combination_of_columns` on (`movie_id`, `snapshot_date`): the grain.
 - `not_null` on `movie_version_key`, `movie_id`, `snapshot_date`, `popularity`, `popularity_rank`.
 - `relationships` from `movie_version_key` to `dim_movie`, from `movie_id` to `dim_movie`, and from `snapshot_date` to `dim_date`.
-- A singular test that each fact row's version is valid on its `snapshot_date` (`valid_from::date <= snapshot_date < coalesce(valid_to::date, '9999-12-31')`).
+- A singular test that each fact row's version is valid on its `snapshot_date` (`valid_from` and `valid_to` converted to UTC dates with `at time zone 'UTC'`, `valid_from_date <= snapshot_date < valid_to_date`, a NULL `valid_to` open).
 - A singular test that the fact's distinct `movie_id` count equals the latest details count: the scope rule from section 1.
 
 ### Predicted row count
 
-**725,373 rows** (7,703 films, after the 4 Nov ingest; 643,285 before it). It grows by roughly the catalogue size per daily load (~7,700 rows/day), plus each new film's backfilled history.
+**860,269 rows** on 14 Nov (8,264 films × 106 days, with 15,715 film-days absent, 1.8%). It grows by roughly the catalogue size per daily load (~8,300 rows/day), plus each new film's backfilled history.
 
-For context, the full export is 119,681,805 rows across 96 dates and 1,282,121 distinct films; the fact keeps about 0.6% of it.
+For context, on 14 Nov the full export is 132,412,472 rows across 106 dates and 1,289,543 distinct films; the fact keeps about 0.6% of it.
 
 ## 3. Dimensions
 
@@ -95,13 +95,13 @@ For context, the full export is 119,681,805 rows across 96 dates and 1,282,121 d
 
 - TMDB ids are stable integers from a single source, and the other dimensions are Type 1, so one id always means one row. A surrogate there would add a lookup on every build and protect against nothing.
 - Kimball's default is surrogates everywhere, to insulate the warehouse from source key changes and to merge sources. Neither applies yet. If a second film source is ever added, this decision is revisited.
-- **`dim_movie`'s surrogate is a hash, not a sequence.** `generate_surrogate_key` gives the same key for the same (`movie_id`, `valid_from`) on every build. The fact is a table that stores the key, so a sequence would renumber versions on each full refresh of `dim_movie` and silently break every stored fact row. The cost is a 32-character text key instead of an integer. On a ~725k-row fact that's about 25 MB, which doesn't matter at this size.
+- **`dim_movie`'s surrogate is a hash, not a sequence.** `generate_surrogate_key` gives the same key for the same (`movie_id`, `valid_from`) on every build. The fact is a table that stores the key, so a sequence would renumber versions on each full refresh of `dim_movie` and silently break every stored fact row. The cost is a 32-character text key instead of an integer. On a ~860k-row fact that's about 30 MB, which doesn't matter at this size.
 
-| Dimension | Grain | Key | Surrogate? | Source | Rows (7 Nov) |
+| Dimension | Grain | Key | Surrogate? | Source | Rows (14 Nov) |
 |---|---|---|---|---|---|
-| `dim_movie` | one row per film version | `movie_version_key` (durable: `movie_id`) | **Yes** | `stg_tmdb__movie_details`, `stg_tmdb__movie_ids_daily` | 7,710 (one version each) |
-| `dim_company` | one row per production company | `company_id` | No | `stg_tmdb__movie_companies` | 8,554 |
-| `dim_person` | one row per person | `person_id` | No | `stg_tmdb__movie_cast` + `stg_tmdb__movie_crew` | 386,226 |
+| `dim_movie` | one row per film version | `movie_version_key` (durable: `movie_id`) | **Yes** | `stg_tmdb__movie_details`, `stg_tmdb__movie_ids_daily` | 8,463 (8,264 films, 199 with a second version) |
+| `dim_company` | one row per production company | `company_id` | No | `stg_tmdb__movie_companies` | 9,088 |
+| `dim_person` | one row per person | `person_id` | No | `stg_tmdb__movie_cast` + `stg_tmdb__movie_crew` | 405,293 |
 | `dim_genre` | one row per TMDB movie genre | `genre_id` | No | seed `tmdb_genres.csv` | 19 |
 | `dim_date` | one row per calendar day | `date_day` | No | `dbt_utils.date_spine` | 58,804 |
 
@@ -201,7 +201,7 @@ Why this instead of a dbt snapshot:
 - **Backdating the first version is one `case` expression** in the model, not a fix applied to snapshot output afterwards.
 - **Only the four tracked columns open a version.** That's the job `strategy: check` with `check_cols` would do, done explicitly in step 2.
 
-Materialised as a table, full refresh. At 7,710 films the version logic is cheap; the build takes about 3 minutes, almost all of it picking each film's latest export flags from the ~120M-row export view.
+Materialised as a table, full refresh. At 8,264 films the version logic is cheap; the build takes about 1 minute, almost all of it picking each film's latest export flags from the ~130M-row export view.
 
 #### How the fact joins a versioned dimension: point-in-time
 
@@ -209,9 +209,13 @@ Materialised as a table, full refresh. At 7,710 films the version logic is cheap
 
 - **Why:** the questions are about how popularity moves as a film changes. Popularity while a film was "Post Production" versus after "Released", or before and after its revenue grew, needs each day to see the attributes it really had. Joining on `movie_id` to the current version would label every past day with today's status and revenue, which is what SCD2 is meant to prevent.
 - **Current-version questions still work:** the fact also keeps `movie_id`, and `dim_movie` has `is_current`, so "today's genres" or "today's status" is a join on the durable key (Type 7, section 3).
-- **The key is resolved when the fact is built**, not at query time: `valid_from::date <= snapshot_date < coalesce(valid_to::date, '9999-12-31')`. If two versions start on the same day, the earlier one gets an empty range and the later one wins.
-- **Versions are dated by when a change is fetched, not when TMDB made it.** Once the change feed refetches changed films daily, that's at most a day late, which matches the fact's daily grain.
+- **The key is resolved when the fact is built**, not at query time: `valid_from_date <= snapshot_date < valid_to_date`, with both dates taken in UTC (`at time zone 'UTC'`, so the session's TimeZone can't move a boundary) and a NULL `valid_to` read as `9999-12-31`. If two versions start on the same day, the earlier one gets an empty range and the later one wins.
+- **Versions are dated by when a change is fetched, not when TMDB made it.** When `filmwh changes` runs daily, that's at most a day late, which matches the fact's daily grain. Until week 8 it's run by hand, not on a schedule.
 
-#### Limitation
+#### How history is collected
 
-Until the change feed exists (week 6), details are a single snapshot per film, taken 15 Oct (19 Oct, 24 Oct or 4 Nov for films that joined later), so `dim_movie` has exactly one version per film and the point-in-time join gives the same result as a current-version join.
+- **`filmwh refresh`** refetches every catalogue film. It ran on 14 Nov. Together with the first `filmwh changes` runs, it brought back 199 films with a change to a tracked column, so they have a second version.
+- **`filmwh changes --from D --to D`** refetches only the catalogue films that TMDB's change feed lists. It queries one day at a time: the endpoint allows up to 14 days per query, but a 14-day window exceeds its 500-page limit.
+- **Versions are dated by when the change was fetched, not when TMDB made it.**
+- **Before 14 Nov, each film's first version covers everything back to 1 Aug.** A change TMDB made in late October is dated 14 Nov, the first refetch after it.
+- **Deleted films stay current.** A film TMDB has removed, such as 1503825, returns no payload on refetch, so its last version never closes. How to handle deletions is decided in week 7.
